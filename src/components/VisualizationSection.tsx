@@ -1,14 +1,43 @@
+"use client";
+
+import { useState } from "react";
 import { Map, Layers, Navigation, Zap } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { MapContainer, TileLayer, Marker, Polyline, Tooltip } from "react-leaflet";
+import "leaflet/dist/leaflet.css";
 
-const VisualizationSection = () => {
-  const legendItems = [
-    { color: "bg-blue-500", label: "Truck 1 Route", stops: 8 },
-    { color: "bg-green-500", label: "Truck 2 Route", stops: 6 },
-    { color: "bg-purple-500", label: "Truck 3 Route", stops: 7 },
-    { color: "bg-red-500", label: "Depot", stops: 1 },
-  ];
+interface Stop {
+  lat: number;
+  lon: number;
+}
+
+interface Vehicle {
+  id: number;
+  stops: Stop[];
+  route: any; // ORS response
+}
+
+interface VisualizationSectionProps {
+  routes?: Vehicle[];
+}
+
+const VisualizationSection = ({ routes = [] }: VisualizationSectionProps) => {
+  const [zoom, setZoom] = useState(12);
+
+  // Dynamic legend for vehicles
+  const legendItems = routes.length > 0
+    ? routes.map((vehicle, idx) => ({
+        color: ["bg-blue-500", "bg-green-500", "bg-purple-500", "bg-orange-500"][idx % 4],
+        label: `Truck ${vehicle.id} Route`,
+        stops: vehicle.stops?.length ?? 0,
+      }))
+    : [
+        { color: "bg-blue-500", label: "Truck 1 Route", stops: 8 },
+        { color: "bg-green-500", label: "Truck 2 Route", stops: 6 },
+        { color: "bg-purple-500", label: "Truck 3 Route", stops: 7 },
+        { color: "bg-red-500", label: "Depot", stops: 1 },
+      ];
 
   return (
     <section id="visualization" className="py-20 bg-background">
@@ -45,71 +74,50 @@ const VisualizationSection = () => {
                     </div>
                     <Badge className="bg-success/10 text-success border-success/20">
                       <Zap className="w-3 h-3 mr-1" />
-                      Optimized
+                      {routes.length > 0 ? "Optimized" : "Waiting"}
                     </Badge>
                   </div>
                 </div>
 
-                {/* Map Placeholder */}
-                <div className="relative h-96 bg-gradient-to-br from-blue-50 to-green-50 flex items-center justify-center">
-                  {/* Simulated Map Background */}
-                  <div className="absolute inset-0 opacity-20">
-                    <div className="w-full h-full bg-gradient-to-br from-primary/20 to-success/20"></div>
-                    {/* Grid Pattern */}
-                    <div 
-                      className="absolute inset-0"
-                      style={{
-                        backgroundImage: "url('data:image/svg+xml;charset=utf-8,%3Csvg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 100 100\"%3E%3Cpath d=\"M0 0h100v100H0z\" fill=\"none\" stroke=\"%23cbd5e1\" stroke-width=\".5\"/%3E%3C/svg%3E')",
-                        backgroundSize: "20px 20px"
-                      }}
-                    ></div>
-                  </div>
+                {/* Map */}
+                <div className="relative h-96">
+                  <MapContainer
+                    center={[17.385, 78.4867]} // default center
+                    zoom={zoom}
+                    className="w-full h-full"
+                  >
+                    <TileLayer
+                      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                      attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> contributors'
+                    />
 
-                  {/* Route Lines and Markers */}
-                  <div className="relative z-10 w-full h-full p-8">
-                    {/* Depot */}
-                    <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
-                      <div className="w-6 h-6 bg-red-500 rounded-full border-4 border-white shadow-lg"></div>
-                      <div className="text-xs font-medium mt-1 text-center">Depot</div>
-                    </div>
+                    {/* Draw vehicle routes */}
+                    {routes.map((vehicle, idx) => {
+                      const geometry = vehicle.route?.routes?.[0]?.geometry?.coordinates || [];
+                      const polyCoords = geometry.map(([lon, lat]: [number, number]) => [lat, lon]);
+                      const colors = ["blue", "green", "purple", "orange"];
+                      return (
+                        <Polyline
+                          key={vehicle.id}
+                          positions={polyCoords}
+                          color={colors[idx % colors.length]}
+                        >
+                          <Tooltip>Truck {vehicle.id}</Tooltip>
+                        </Polyline>
+                      );
+                    })}
 
-                    {/* Route 1 (Blue) */}
-                    <div className="absolute top-1/4 left-1/4">
-                      <div className="w-4 h-4 bg-blue-500 rounded-full border-2 border-white shadow"></div>
-                    </div>
-                    <div className="absolute top-1/3 left-1/5">
-                      <div className="w-4 h-4 bg-blue-500 rounded-full border-2 border-white shadow"></div>
-                    </div>
-
-                    {/* Route 2 (Green) */}
-                    <div className="absolute top-3/4 right-1/4">
-                      <div className="w-4 h-4 bg-green-500 rounded-full border-2 border-white shadow"></div>
-                    </div>
-                    <div className="absolute top-2/3 right-1/5">
-                      <div className="w-4 h-4 bg-green-500 rounded-full border-2 border-white shadow"></div>
-                    </div>
-
-                    {/* Route 3 (Purple) */}
-                    <div className="absolute bottom-1/4 left-3/4">
-                      <div className="w-4 h-4 bg-purple-500 rounded-full border-2 border-white shadow"></div>
-                    </div>
-                    <div className="absolute bottom-1/3 left-2/3">
-                      <div className="w-4 h-4 bg-purple-500 rounded-full border-2 border-white shadow"></div>
-                    </div>
-                  </div>
-
-                  {/* Map Overlay */}
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/5">
-                    <div className="text-center">
-                      <Map className="w-12 h-12 text-primary mx-auto mb-3 opacity-60" />
-                      <p className="text-foreground font-medium">
-                        Interactive Map Loading...
-                      </p>
-                      <p className="text-muted-foreground text-sm mt-1">
-                        React-Leaflet integration ready
-                      </p>
-                    </div>
-                  </div>
+                    {/* Draw depot + stops */}
+                    {routes.map((vehicle) =>
+                      vehicle.stops?.map((stop: Stop, i: number) => (
+                        <Marker key={`${vehicle.id}-${i}`} position={[stop.lat, stop.lon]}>
+                          <Tooltip>
+                            {i === 0 ? "Depot" : `Stop ${i} (Truck ${vehicle.id})`}
+                          </Tooltip>
+                        </Marker>
+                      ))
+                    )}
+                  </MapContainer>
                 </div>
 
                 {/* Map Controls */}
@@ -120,13 +128,17 @@ const VisualizationSection = () => {
                         <Layers className="w-4 h-4 mr-2" />
                         Layers
                       </Button>
-                      <Button variant="outline" size="sm">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setZoom((z) => (z < 18 ? z + 1 : z))}
+                      >
                         <Navigation className="w-4 h-4 mr-2" />
-                        Center
+                        Zoom In
                       </Button>
                     </div>
                     <div className="text-sm text-muted-foreground">
-                      Zoom: 12x | Total Routes: 3 | Coverage: 156 km
+                      Zoom: {zoom}x | Total Routes: {routes.length}
                     </div>
                   </div>
                 </div>
@@ -143,7 +155,7 @@ const VisualizationSection = () => {
                   </div>
                   Route Legend
                 </h4>
-                
+
                 <div className="space-y-3">
                   {legendItems.map((item, index) => (
                     <div key={index} className="flex items-center justify-between">
@@ -152,7 +164,7 @@ const VisualizationSection = () => {
                         <span className="text-sm font-medium">{item.label}</span>
                       </div>
                       <Badge variant="outline" className="text-xs">
-                        {item.stops} {item.stops === 1 ? 'stop' : 'stops'}
+                        {item.stops} {item.stops === 1 ? "stop" : "stops"}
                       </Badge>
                     </div>
                   ))}
@@ -162,19 +174,20 @@ const VisualizationSection = () => {
               {/* Map Stats */}
               <div className="saas-card p-6">
                 <h4 className="font-semibold mb-4">Map Statistics</h4>
-                
                 <div className="space-y-4">
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Total Stops</span>
-                    <span className="font-semibold">21</span>
+                    <span className="font-semibold">
+                      {routes.reduce((acc, v) => acc + (v.stops?.length ?? 0), 0) || 0}
+                    </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Coverage Area</span>
-                    <span className="font-semibold">45 km²</span>
+                    <span className="font-semibold">~45 km²</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Avg Route Length</span>
-                    <span className="font-semibold">52 km</span>
+                    <span className="font-semibold">~52 km</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Efficiency</span>
@@ -186,7 +199,6 @@ const VisualizationSection = () => {
               {/* Quick Actions */}
               <div className="saas-card p-6">
                 <h4 className="font-semibold mb-4">Quick Actions</h4>
-                
                 <div className="space-y-2">
                   <Button variant="outline" className="w-full justify-start">
                     Export Routes
