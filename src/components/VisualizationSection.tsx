@@ -1,3 +1,4 @@
+// VisualizationSection.tsx (replace your current file)
 "use client";
 
 import { useEffect, useState } from "react";
@@ -41,6 +42,7 @@ interface Vehicle {
 
 interface VisualizationSectionProps {
   routes?: Vehicle[];
+  baseline?: { distance: number; duration: number } | null;
 }
 
 const colors = ["blue", "green", "purple", "orange", "red", "cyan", "pink", "yellow", "brown"];
@@ -82,10 +84,9 @@ function FitMapBounds({ routes }: { routes: Vehicle[] }) {
   return null;
 }
 
-export default function VisualizationSection({ routes = [] }: VisualizationSectionProps) {
+export default function VisualizationSection({ routes = [], baseline = null }: VisualizationSectionProps) {
   const [zoom, setZoom] = useState(12);
   const [selectedTruck, setSelectedTruck] = useState<number | null>(null);
-  const [beforeMetrics, setBeforeMetrics] = useState<{ distance: number; duration: number } | null>(null);
 
   // Compute depot candidate
   const depotCandidate =
@@ -101,39 +102,8 @@ export default function VisualizationSection({ routes = [] }: VisualizationSecti
   const isSameCoord = (aLat: number, aLon: number, bLat: number, bLon: number) =>
     Math.abs(aLat - bLat) < 1e-5 && Math.abs(aLon - bLon) < 1e-5;
 
-  // Fetch BEFORE metrics
-  useEffect(() => {
-    if (!routes.length || !depotCandidate) return;
-
-    const depot = { lat: depotCandidate.lat, lon: depotCandidate.lon };
-    const customers = routes
-      .flatMap((r) => r.stops)
-      .filter((s) => !(s.name?.trim().toLowerCase() === "depot"))
-      .map((s) => ({
-        lat: s.lat,
-        lon: s.lon,
-        demand: s.demand || 0,
-        LocationName: s.name || "Stop",
-      }));
-
-    fetch("/api/calculate_before_metrics", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ depot, customers }),
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.beforeDistance && data.beforeTime) {
-          setBeforeMetrics({
-            distance: data.beforeDistance, // meters
-            duration: data.beforeTime, // seconds
-          });
-        } else {
-          console.warn("No before metrics received:", data);
-        }
-      })
-      .catch((err) => console.error("Failed to fetch before metrics", err));
-  }, [routes]);
+  // Use baseline provided by parent (UploadSection) for BEFORE metrics
+  const beforeMetrics = baseline;
 
   // Aggregate AFTER totals
   const afterDistance = routes.reduce(
@@ -182,14 +152,16 @@ export default function VisualizationSection({ routes = [] }: VisualizationSecti
           {beforeMetrics && (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
               <div className="p-4 border rounded-lg bg-muted/30 text-center">
-                <h4 className="font-semibold text-sm">Total Distanceeeeeeeee</h4>
+                <h4 className="font-semibold text-sm">Total Distance</h4>
                 <p className="text-lg font-bold">{(afterDistance / 1000).toFixed(2)} km</p>
-                <p className="text-xs text-muted-foreground">Saved {distanceSavingPct}%</p>
+                <p className="text-xs text-muted-foreground">Before: {(beforeMetrics.distance / 1000).toFixed(2)} km</p>
+                <p className="text-xs text-green-600">Saved {distanceSavingPct}%</p>
               </div>
               <div className="p-4 border rounded-lg bg-muted/30 text-center">
                 <h4 className="font-semibold text-sm">Travel Time</h4>
                 <p className="text-lg font-bold">{(afterDuration / 3600).toFixed(2)} hrs</p>
-                <p className="text-xs text-muted-foreground">Saved {durationSavingPct}%</p>
+                <p className="text-xs text-muted-foreground">Before: {(beforeMetrics.duration / 3600).toFixed(2)} hrs</p>
+                <p className="text-xs text-green-600">Saved {durationSavingPct}%</p>
               </div>
             </div>
           )}
@@ -208,13 +180,7 @@ export default function VisualizationSection({ routes = [] }: VisualizationSecti
                       <p className="text-sm text-muted-foreground">Real-time optimization visualization</p>
                     </div>
                   </div>
-                  <Badge
-                    className={`${
-                      routes.length > 0
-                        ? "bg-success/10 text-success border-success/20"
-                        : "bg-muted/20 text-muted-foreground border-muted/20"
-                    }`}
-                  >
+                  <Badge className={`${routes.length > 0 ? "bg-success/10 text-success border-success/20" : "bg-muted/20 text-muted-foreground border-muted/20"}`}>
                     <Zap className="w-3 h-3 mr-1" />
                     {routes.length > 0 ? "Optimized" : "Waiting"}
                   </Badge>
@@ -222,10 +188,7 @@ export default function VisualizationSection({ routes = [] }: VisualizationSecti
 
                 <div className="relative h-96">
                   <MapContainer center={depotPos || [17.385, 78.4867]} zoom={zoom} className="w-full h-full">
-                    <TileLayer
-                      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                      attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> contributors'
-                    />
+                    <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='&copy; OSM contributors' />
                     <FitMapBounds routes={routes} />
                     {depotPos && (
                       <Marker position={depotPos} icon={depotIcon} zIndexOffset={1000}>
@@ -241,11 +204,7 @@ export default function VisualizationSection({ routes = [] }: VisualizationSecti
                         <Polyline
                           key={`route-${vehicle.id}`}
                           positions={polyCoords.map(([lat, lon]) => [lat, lon])}
-                          pathOptions={{
-                            color: colors[idx % colors.length],
-                            weight: isSelected ? 6 : 3,
-                            opacity: isSelected ? 1 : 0.15,
-                          }}
+                          pathOptions={{ color: colors[idx % colors.length], weight: isSelected ? 6 : 3, opacity: isSelected ? 1 : 0.15 }}
                         />
                       );
                     })}
@@ -254,15 +213,7 @@ export default function VisualizationSection({ routes = [] }: VisualizationSecti
                         if (depotPos && isSameCoord(stop.lat, stop.lon, depotPos[0], depotPos[1])) return null;
                         const isSelected = selectedTruck === null || selectedTruck === vehicle.id;
                         return (
-                          <Marker
-                            key={`${vehicle.id}-${i}`}
-                            position={[stop.lat, stop.lon]}
-                            opacity={isSelected ? 1 : 0.25}
-                            eventHandlers={{
-                              click: () =>
-                                setSelectedTruck(selectedTruck === vehicle.id ? null : vehicle.id),
-                            }}
-                          >
+                          <Marker key={`${vehicle.id}-${i}`} position={[stop.lat, stop.lon]} opacity={isSelected ? 1 : 0.25} eventHandlers={{ click: () => setSelectedTruck(selectedTruck === vehicle.id ? null : vehicle.id) }}>
                             <Tooltip sticky>{stop.name || `Stop ${i + 1}`} (Truck {vehicle.id})</Tooltip>
                           </Marker>
                         );
@@ -273,16 +224,10 @@ export default function VisualizationSection({ routes = [] }: VisualizationSecti
 
                 <div className="p-4 border-t border-border bg-muted/30 flex items-center justify-between">
                   <div className="flex items-center space-x-2">
-                    <Button variant="outline" size="sm" onClick={() => setSelectedTruck(null)}>
-                      Show All
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={() => setZoom((z) => (z < 18 ? z + 1 : z))}>
-                      <Navigation className="w-4 h-4 mr-2" />Zoom In
-                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => setSelectedTruck(null)}>Show All</Button>
+                    <Button variant="outline" size="sm" onClick={() => setZoom((z) => (z < 18 ? z + 1 : z))}><Navigation className="w-4 h-4 mr-2" />Zoom In</Button>
                   </div>
-                  <div className="text-sm text-muted-foreground">
-                    Zoom: {zoom}x | Total Routes: {routes.length}
-                  </div>
+                  <div className="text-sm text-muted-foreground">Zoom: {zoom}x | Total Routes: {routes.length}</div>
                 </div>
               </div>
             </div>
@@ -292,28 +237,17 @@ export default function VisualizationSection({ routes = [] }: VisualizationSecti
               {legendItems.length > 0 && (
                 <div className="saas-card p-6">
                   <h4 className="font-semibold mb-4 flex items-center">
-                    <div className="w-5 h-5 bg-primary/10 rounded mr-2 flex items-center justify-center">
-                      <div className="w-2 h-2 bg-primary rounded-full"></div>
-                    </div>
+                    <div className="w-5 h-5 bg-primary/10 rounded mr-2 flex items-center justify-center"><div className="w-2 h-2 bg-primary rounded-full"></div></div>
                     Route Legend
                   </h4>
                   <div className="space-y-3">
                     {legendItems.map((item) => (
-                      <div
-                        key={item.id}
-                        className="flex items-center justify-between cursor-pointer"
-                        onClick={() => setSelectedTruck(selectedTruck === item.id ? null : item.id)}
-                      >
+                      <div key={item.id} className="flex items-center justify-between cursor-pointer" onClick={() => setSelectedTruck(selectedTruck === item.id ? null : item.id)}>
                         <div className="flex items-center space-x-3">
-                          <div
-                            className="w-4 h-4 rounded-full"
-                            style={{ backgroundColor: item.color }}
-                          ></div>
+                          <div className="w-4 h-4 rounded-full" style={{ backgroundColor: item.color }}></div>
                           <span className="text-sm font-medium">{item.label}</span>
                         </div>
-                        <Badge variant="outline" className="text-xs">
-                          {item.stops} {item.stops === 1 ? "stop" : "stops"} • {item.distance} km
-                        </Badge>
+                        <Badge variant="outline" className="text-xs">{item.stops} {item.stops === 1 ? "stop" : "stops"} • {item.distance} km</Badge>
                       </div>
                     ))}
                   </div>
