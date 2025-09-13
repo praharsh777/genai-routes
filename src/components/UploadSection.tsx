@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import VisualizationSection from "./VisualizationSection";
+import ResultsDashboard from "./ResultsDashboard";
 
 interface Stop {
   lat: number;
@@ -28,7 +29,6 @@ const UploadSection = () => {
   const [loading, setLoading] = useState(false);
   const [routes, setRoutes] = useState<Vehicle[]>([]);
 
-  // CSV parser helper
   const parseCSV = (file: File) =>
     new Promise<any[]>((resolve, reject) => {
       Papa.parse(file, {
@@ -80,7 +80,9 @@ const UploadSection = () => {
         (row) => row.LocationName?.toLowerCase() === "depot"
       );
       if (!depotRow) {
-        throw new Error("Depot not found in CSV (must have LocationName = 'Depot').");
+        throw new Error(
+          "Depot not found in CSV (must have LocationName = 'Depot')."
+        );
       }
 
       const depot: Stop = {
@@ -101,17 +103,19 @@ const UploadSection = () => {
         throw new Error("No customer stops found in CSV.");
       }
 
-      // Send to backend
-      const response = await fetch("http://localhost:5000/api/optimize_routes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          depot,
-          customers,
-          numVehicles: vehicles,
-          capacity,
-        }),
-      });
+      const response = await fetch(
+        "http://localhost:5000/api/optimize_routes",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            depot,
+            customers,
+            numVehicles: vehicles,
+            capacity,
+          }),
+        }
+      );
 
       if (!response.ok) {
         const errData = await response.json();
@@ -154,7 +158,9 @@ const UploadSection = () => {
                   </div>
                   <div>
                     <h3 className="text-xl font-semibold">Data Upload</h3>
-                    <p className="text-muted-foreground">CSV or Excel files supported</p>
+                    <p className="text-muted-foreground">
+                      CSV or Excel files supported
+                    </p>
                   </div>
                 </div>
 
@@ -202,7 +208,9 @@ const UploadSection = () => {
                   </div>
                   <div>
                     <h3 className="text-xl font-semibold">Fleet Configuration</h3>
-                    <p className="text-muted-foreground">Set your vehicle parameters</p>
+                    <p className="text-muted-foreground">
+                      Set your vehicle parameters
+                    </p>
                   </div>
                 </div>
 
@@ -256,8 +264,13 @@ const UploadSection = () => {
         </div>
       </section>
 
-      {/* Render Visualization Section after optimization */}
-      {routes.length > 0 && <VisualizationSection routes={routes} />}
+      {/* Render Visualization and Results Dashboard after optimization */}
+      {routes.length > 0 && (
+        <>
+          <VisualizationSection routes={routes} />
+          <ResultsDashboard vehicles={routes} />
+        </>
+      )}
     </>
   );
 };

@@ -24,7 +24,13 @@ interface Stop {
 }
 
 interface ORSRoute {
-  routes?: { geometry?: string }[];
+  routes?: {
+    geometry?: string;
+    summary?: {
+      distance?: number; // meters
+      duration?: number; // seconds
+    };
+  }[];
 }
 
 interface Vehicle {
@@ -37,17 +43,7 @@ interface VisualizationSectionProps {
   routes?: Vehicle[];
 }
 
-const colors = [
-  "blue",
-  "green",
-  "purple",
-  "orange",
-  "red",
-  "cyan",
-  "pink",
-  "yellow",
-  "brown",
-];
+const colors = ["blue", "green", "purple", "orange", "red", "cyan", "pink", "yellow", "brown"];
 
 const DefaultIcon = L.icon({
   iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
@@ -61,7 +57,7 @@ const DefaultIcon = L.icon({
 L.Marker.prototype.options.icon = DefaultIcon;
 
 const depotIcon = L.icon({
-  iconUrl: "/building.png", // ✅ fixed path for public folder
+  iconUrl: "/building.png",
   iconSize: [40, 40],
   iconAnchor: [20, 40],
   popupAnchor: [0, -40],
@@ -72,63 +68,134 @@ const depotIcon = L.icon({
 
 function FitMapBounds({ routes }: { routes: Vehicle[] }) {
   const map = useMap();
-
   useEffect(() => {
     if (!routes.length) return;
     const bounds = L.latLngBounds([]);
-
     routes.forEach((vehicle) => {
       vehicle.stops.forEach((stop) => bounds.extend([stop.lat, stop.lon]));
       const encoded = vehicle.route?.routes?.[0]?.geometry;
       const coords = encoded ? polyline.decode(encoded) : [];
       coords.forEach(([lat, lon]) => bounds.extend([lat, lon]));
     });
-
     if (bounds.isValid()) map.fitBounds(bounds, { padding: [30, 30] });
   }, [routes, map]);
-
   return null;
 }
 
 export default function VisualizationSection({ routes = [] }: VisualizationSectionProps) {
   const [zoom, setZoom] = useState(12);
   const [selectedTruck, setSelectedTruck] = useState<number | null>(null);
+  const [beforeMetrics, setBeforeMetrics] = useState<{ distance: number; duration: number } | null>(null);
 
-  const depotStop = routes
-    .flatMap((r) => r.stops)
-    .find((stop) => stop.name?.trim().toLowerCase() === "depot");
+  // Compute depot candidate
+  const depotCandidate =
+    routes
+      .flatMap((r) => r.stops)
+      .find((stop) => stop.name?.trim().toLowerCase() === "depot") ||
+    (routes[0]?.stops.length ? routes[0].stops[0] : null);
 
-  const depotPos: [number, number] | null = depotStop
-    ? [Number(depotStop.lat), Number(depotStop.lon)]
-    : routes.length && routes[0].stops.length
-    ? [routes[0].stops[0].lat, routes[0].stops[0].lon]
+  const depotPos: [number, number] | null = depotCandidate
+    ? [Number(depotCandidate.lat), Number(depotCandidate.lon)]
     : null;
 
   const isSameCoord = (aLat: number, aLon: number, bLat: number, bLon: number) =>
     Math.abs(aLat - bLat) < 1e-5 && Math.abs(aLon - bLon) < 1e-5;
 
-  const legendItems = routes.map((vehicle, idx) => ({
-    color: colors[idx % colors.length],
-    label: `Truck ${vehicle.id} Route`,
-    stops: vehicle.stops.length,
-    id: vehicle.id,
-  }));
+  // Fetch BEFORE metrics
+  useEffect(() => {
+    if (!routes.length || !depotCandidate) return;
+
+    const depot = { lat: depotCandidate.lat, lon: depotCandidate.lon };
+    const customers = routes
+      .flatMap((r) => r.stops)
+      .filter((s) => !(s.name?.trim().toLowerCase() === "depot"))
+      .map((s) => ({
+        lat: s.lat,
+        lon: s.lon,
+        demand: s.demand || 0,
+        LocationName: s.name || "Stop",
+      }));
+
+    fetch("/api/calculate_before_metrics", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ depot, customers }),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.beforeDistance && data.beforeTime) {
+          setBeforeMetrics({
+            distance: data.beforeDistance, // meters
+            duration: data.beforeTime, // seconds
+          });
+        } else {
+          console.warn("No before metrics received:", data);
+        }
+      })
+      .catch((err) => console.error("Failed to fetch before metrics", err));
+  }, [routes]);
+
+  // Aggregate AFTER totals
+  const afterDistance = routes.reduce(
+    (sum, v) => sum + (v.route?.routes?.[0]?.summary?.distance || 0),
+    0
+  );
+  const afterDuration = routes.reduce(
+    (sum, v) => sum + (v.route?.routes?.[0]?.summary?.duration || 0),
+    0
+  );
+
+  const legendItems = routes.map((vehicle, idx) => {
+    const distanceMeters = vehicle.route?.routes?.[0]?.summary?.distance || 0;
+    const distanceKm = (distanceMeters / 1000).toFixed(2);
+    return {
+      color: colors[idx % colors.length],
+      label: `Truck ${vehicle.id} Route`,
+      stops: vehicle.stops.length,
+      distance: distanceKm,
+      id: vehicle.id,
+    };
+  });
+
+  const distanceSavingPct =
+    beforeMetrics && beforeMetrics.distance > 0
+      ? (((beforeMetrics.distance - afterDistance) / beforeMetrics.distance) * 100).toFixed(1)
+      : "0";
+
+  const durationSavingPct =
+    beforeMetrics && beforeMetrics.duration > 0
+      ? (((beforeMetrics.duration - afterDuration) / beforeMetrics.duration) * 100).toFixed(1)
+      : "0";
 
   return (
     <section id="visualization" className="py-20 bg-background">
       <div className="container mx-auto px-4">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-12">
-            <h2 className="text-4xl font-bold text-foreground mb-4">
-              Route Visualization
-            </h2>
+            <h2 className="text-4xl font-bold text-foreground mb-4">Route Visualization</h2>
             <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-              Interactive map showing optimized delivery routes with real-time insights and detailed analytics for each vehicle.
+              Interactive map showing optimized delivery routes and performance metrics.
             </p>
           </div>
 
+          {/* BEFORE vs AFTER metrics */}
+          {beforeMetrics && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+              <div className="p-4 border rounded-lg bg-muted/30 text-center">
+                <h4 className="font-semibold text-sm">Total Distanceeeeeeeee</h4>
+                <p className="text-lg font-bold">{(afterDistance / 1000).toFixed(2)} km</p>
+                <p className="text-xs text-muted-foreground">Saved {distanceSavingPct}%</p>
+              </div>
+              <div className="p-4 border rounded-lg bg-muted/30 text-center">
+                <h4 className="font-semibold text-sm">Travel Time</h4>
+                <p className="text-lg font-bold">{(afterDuration / 3600).toFixed(2)} hrs</p>
+                <p className="text-xs text-muted-foreground">Saved {durationSavingPct}%</p>
+              </div>
+            </div>
+          )}
+
+          {/* Map + Legend */}
           <div className="grid lg:grid-cols-4 gap-8">
-            {/* Map */}
             <div className="lg:col-span-3">
               <div className="saas-card-lg overflow-hidden">
                 <div className="p-6 border-b border-border bg-muted/30 flex items-center justify-between">
@@ -138,9 +205,7 @@ export default function VisualizationSection({ routes = [] }: VisualizationSecti
                     </div>
                     <div>
                       <h3 className="text-lg font-semibold">Interactive Route Map</h3>
-                      <p className="text-sm text-muted-foreground">
-                        Real-time optimization visualization
-                      </p>
+                      <p className="text-sm text-muted-foreground">Real-time optimization visualization</p>
                     </div>
                   </div>
                   <Badge
@@ -155,37 +220,23 @@ export default function VisualizationSection({ routes = [] }: VisualizationSecti
                   </Badge>
                 </div>
 
-                {/* ✅ Map is fully absolute positioned to avoid extra container space */}
                 <div className="relative h-96">
-                  <MapContainer
-                    center={depotPos || [17.385, 78.4867]}
-                    zoom={zoom}
-                    className="absolute top-0 left-0 w-full h-full"
-                  >
+                  <MapContainer center={depotPos || [17.385, 78.4867]} zoom={zoom} className="w-full h-full">
                     <TileLayer
                       url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                       attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> contributors'
                     />
                     <FitMapBounds routes={routes} />
-
-                    {depotStop && (
-                      <Marker
-                        position={[Number(depotStop.lat), Number(depotStop.lon)]}
-                        icon={depotIcon}
-                        zIndexOffset={1000}
-                      >
+                    {depotPos && (
+                      <Marker position={depotPos} icon={depotIcon} zIndexOffset={1000}>
                         <Tooltip sticky>Depot</Tooltip>
                       </Marker>
                     )}
-
                     {routes.map((vehicle, idx) => {
                       const encoded = vehicle.route?.routes?.[0]?.geometry;
                       const polyCoords = encoded ? polyline.decode(encoded) : [];
                       if (!polyCoords.length) return null;
-
-                      const isSelected =
-                        selectedTruck === null || selectedTruck === vehicle.id;
-
+                      const isSelected = selectedTruck === null || selectedTruck === vehicle.id;
                       return (
                         <Polyline
                           key={`route-${vehicle.id}`}
@@ -198,16 +249,10 @@ export default function VisualizationSection({ routes = [] }: VisualizationSecti
                         />
                       );
                     })}
-
                     {routes.map((vehicle) =>
                       vehicle.stops.map((stop, i) => {
-                        if (
-                          depotPos &&
-                          isSameCoord(stop.lat, stop.lon, depotPos[0], depotPos[1])
-                        )
-                          return null;
-                        const isSelected =
-                          selectedTruck === null || selectedTruck === vehicle.id;
+                        if (depotPos && isSameCoord(stop.lat, stop.lon, depotPos[0], depotPos[1])) return null;
+                        const isSelected = selectedTruck === null || selectedTruck === vehicle.id;
                         return (
                           <Marker
                             key={`${vehicle.id}-${i}`}
@@ -215,14 +260,10 @@ export default function VisualizationSection({ routes = [] }: VisualizationSecti
                             opacity={isSelected ? 1 : 0.25}
                             eventHandlers={{
                               click: () =>
-                                setSelectedTruck(
-                                  selectedTruck === vehicle.id ? null : vehicle.id
-                                ),
+                                setSelectedTruck(selectedTruck === vehicle.id ? null : vehicle.id),
                             }}
                           >
-                            <Tooltip sticky>
-                              {stop.name || `Stop ${i + 1}`} (Truck {vehicle.id})
-                            </Tooltip>
+                            <Tooltip sticky>{stop.name || `Stop ${i + 1}`} (Truck {vehicle.id})</Tooltip>
                           </Marker>
                         );
                       })
@@ -232,20 +273,11 @@ export default function VisualizationSection({ routes = [] }: VisualizationSecti
 
                 <div className="p-4 border-t border-border bg-muted/30 flex items-center justify-between">
                   <div className="flex items-center space-x-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setSelectedTruck(null)}
-                    >
+                    <Button variant="outline" size="sm" onClick={() => setSelectedTruck(null)}>
                       Show All
                     </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setZoom((z) => (z < 18 ? z + 1 : z))}
-                    >
-                      <Navigation className="w-4 h-4 mr-2" />
-                      Zoom In
+                    <Button variant="outline" size="sm" onClick={() => setZoom((z) => (z < 18 ? z + 1 : z))}>
+                      <Navigation className="w-4 h-4 mr-2" />Zoom In
                     </Button>
                   </div>
                   <div className="text-sm text-muted-foreground">
@@ -255,7 +287,7 @@ export default function VisualizationSection({ routes = [] }: VisualizationSecti
               </div>
             </div>
 
-            {/* Sidebar */}
+            {/* Legend */}
             <div className="space-y-6">
               {legendItems.length > 0 && (
                 <div className="saas-card p-6">
@@ -265,17 +297,12 @@ export default function VisualizationSection({ routes = [] }: VisualizationSecti
                     </div>
                     Route Legend
                   </h4>
-
                   <div className="space-y-3">
                     {legendItems.map((item) => (
                       <div
                         key={item.id}
                         className="flex items-center justify-between cursor-pointer"
-                        onClick={() =>
-                          setSelectedTruck(
-                            selectedTruck === item.id ? null : item.id
-                          )
-                        }
+                        onClick={() => setSelectedTruck(selectedTruck === item.id ? null : item.id)}
                       >
                         <div className="flex items-center space-x-3">
                           <div
@@ -285,7 +312,7 @@ export default function VisualizationSection({ routes = [] }: VisualizationSecti
                           <span className="text-sm font-medium">{item.label}</span>
                         </div>
                         <Badge variant="outline" className="text-xs">
-                          {item.stops} {item.stops === 1 ? "stop" : "stops"}
+                          {item.stops} {item.stops === 1 ? "stop" : "stops"} • {item.distance} km
                         </Badge>
                       </div>
                     ))}
