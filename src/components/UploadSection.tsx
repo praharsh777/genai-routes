@@ -1,7 +1,8 @@
 "use client";
 
+import Papa from "papaparse";
 import { useState } from "react";
-import { Upload, FileText, Truck, Package, Loader2 } from "lucide-react";
+import { Upload, FileText, Truck, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,6 +11,7 @@ import VisualizationSection from "./VisualizationSection";
 interface Stop {
   lat: number;
   lon: number;
+  demand: number;
 }
 
 interface Vehicle {
@@ -25,6 +27,17 @@ const UploadSection = () => {
   const [capacity, setCapacity] = useState(100);
   const [loading, setLoading] = useState(false);
   const [routes, setRoutes] = useState<Vehicle[]>([]);
+
+  // CSV parser helper
+  const parseCSV = (file: File) =>
+    new Promise<any[]>((resolve, reject) => {
+      Papa.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        complete: (results) => resolve(results.data),
+        error: (err) => reject(err),
+      });
+    });
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
@@ -57,14 +70,38 @@ const UploadSection = () => {
     try {
       setLoading(true);
 
-      // For now, mock reading depot & customer coordinates
-      // Later, parse CSV/XLSX to extract actual lat/lon points
-      const depot = { lat: 17.385, lon: 78.4867 }; // Example depot
-      const customers: Stop[] = [
-        { lat: 17.4458, lon: 78.4121 },
-        { lat: 17.400, lon: 78.450 },
-      ];
+      const rows = await parseCSV(file);
 
+      if (!rows || rows.length === 0) {
+        throw new Error("CSV file is empty or invalid.");
+      }
+
+      const depotRow = rows.find(
+        (row) => row.LocationName?.toLowerCase() === "depot"
+      );
+      if (!depotRow) {
+        throw new Error("Depot not found in CSV (must have LocationName = 'Depot').");
+      }
+
+      const depot: Stop = {
+        lat: parseFloat(depotRow.Latitude),
+        lon: parseFloat(depotRow.Longitude),
+        demand: parseInt(depotRow.Demand || "0", 10),
+      };
+
+      const customers: Stop[] = rows
+        .filter((row) => row.LocationName?.toLowerCase() !== "depot")
+        .map((row) => ({
+          lat: parseFloat(row.Latitude),
+          lon: parseFloat(row.Longitude),
+          demand: parseInt(row.Demand || "0", 10),
+        }));
+
+      if (customers.length === 0) {
+        throw new Error("No customer stops found in CSV.");
+      }
+
+      // Send to backend
       const response = await fetch("http://localhost:5000/api/optimize_routes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -72,21 +109,22 @@ const UploadSection = () => {
           depot,
           customers,
           numVehicles: vehicles,
+          capacity,
         }),
       });
 
       if (!response.ok) {
-        throw new Error("Failed to optimize routes");
+        const errData = await response.json();
+        throw new Error(errData.error || "Failed to optimize routes");
       }
 
       const data = await response.json();
       console.log("Optimization result:", data);
 
-      // Store routes to render in VisualizationSection
       setRoutes(data.vehicles || []);
-    } catch (error) {
-      console.error(error);
-      alert("An error occurred while optimizing routes.");
+    } catch (error: any) {
+      console.error("Error:", error);
+      alert(error.message || "An error occurred while optimizing routes.");
     } finally {
       setLoading(false);
     }
@@ -133,7 +171,7 @@ const UploadSection = () => {
                 >
                   <input
                     type="file"
-                    accept=".csv,.xlsx"
+                    accept=".csv"
                     className="hidden"
                     id="file-upload"
                     onChange={handleFileChange}
@@ -152,7 +190,7 @@ const UploadSection = () => {
                   </label>
                 </div>
                 <div className="mt-4 text-sm text-muted-foreground">
-                  Supported formats: CSV, XLSX. Max size: 10MB
+                  Supported format: CSV (columns: LocationName, Latitude, Longitude, Demand)
                 </div>
               </div>
 
