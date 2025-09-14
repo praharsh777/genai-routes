@@ -1,4 +1,3 @@
-// UploadSection.tsx (replace your current file)
 "use client";
 
 import Papa from "papaparse";
@@ -26,6 +25,14 @@ interface BaselineMetrics {
   distance: number;
   duration: number;
 }
+
+// -------------------
+// Backend base URL
+// -------------------
+const BASE_URL =
+  process.env.NODE_ENV === "development"
+    ? "http://localhost:5000"
+    : "https://genai-transport-route-optimizer.onrender.com";
 
 const UploadSection = () => {
   const [dragActive, setDragActive] = useState(false);
@@ -82,9 +89,7 @@ const UploadSection = () => {
         throw new Error("CSV file is empty or invalid.");
       }
 
-      const depotRow = rows.find(
-        (row) => row.LocationName?.toLowerCase() === "depot"
-      );
+      const depotRow = rows.find((row) => row.LocationName?.toLowerCase() === "depot");
       if (!depotRow) {
         throw new Error("Depot not found in CSV (must have LocationName = 'Depot').");
       }
@@ -107,13 +112,16 @@ const UploadSection = () => {
         throw new Error("No customer stops found in CSV.");
       }
 
-      // 1) Fetch baseline (naive) using same number of vehicles (so comparison is fair)
+      // ---------------------------
+      // 1) Fetch baseline metrics
+      // ---------------------------
       try {
-        const baselineRes = await fetch("http://localhost:5000/api/calculate_before_metrics", {
+        const baselineRes = await fetch(`${BASE_URL}/api/calculate_before_metrics`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ depot, customers, numVehicles: vehicles }),
         });
+
         if (baselineRes.ok) {
           const baselineJson = await baselineRes.json();
           setBaselineMetrics({
@@ -129,8 +137,10 @@ const UploadSection = () => {
         setBaselineMetrics(null);
       }
 
+      // ---------------------------
       // 2) Call optimization
-      const response = await fetch("http://localhost:5000/api/optimize_routes", {
+      // ---------------------------
+      const response = await fetch(`${BASE_URL}/api/optimize_routes`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
