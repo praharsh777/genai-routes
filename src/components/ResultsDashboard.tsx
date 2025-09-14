@@ -222,6 +222,7 @@ const ResultsDashboard = ({ vehicles = [], baseline }: ResultsDashboardProps) =>
                 <div className="p-6 border-b border-border dark:border-gray-700">
                   <h3 className="text-xl font-semibold text-foreground dark:text-white">AI Insights</h3>
                   <p className="text-muted-foreground dark:text-gray-300 mt-1">Driver-friendly explanations and chat support</p>
+                  <h2 className="text-xl font-semibold text-foreground dark:text-white">🔊 Click on the insights below to listen and unlock smarter routing decisions.</h2>
                 </div>
                 <div className="p-6 space-y-4">
                   {loadingInsights ? (

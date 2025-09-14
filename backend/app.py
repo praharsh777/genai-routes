@@ -188,67 +188,69 @@ def explain_routes():
     })
 
     return jsonify({"insights": insights})
-
 @app.route("/api/ask", methods=["POST"])
 def ask():
     data = request.json
-    question = data.get("question", "").lower()
+    question = data.get("question", "").strip().lower()
     vehicles = data.get("vehicles", [])
     baseline = data.get("baseline", {})
 
-    # Compute after metrics from optimized routes
-    total_distance_after = sum(v["totalDistance"] for v in vehicles)  # in meters
-    total_time_after = sum(v["totalDuration"] for v in vehicles)      # in seconds
+    # --- Compute metrics ---
+    total_distance_after = sum(v.get("totalDistance", 0) for v in vehicles)
+    total_time_after = sum(v.get("totalDuration", 0) for v in vehicles)
     fuel_cost_after = (total_distance_after / 1000) * 10
     total_cost_after = (total_distance_after / 1000) * 13
 
-    # Get before metrics from baseline or estimate if missing
     total_distance_before = baseline.get("distance", total_distance_after * 1.2)
     total_time_before = baseline.get("duration", total_time_after * 1.2)
     fuel_cost_before = baseline.get("fuel_cost", (total_distance_before / 1000) * 10)
     total_cost_before = baseline.get("total_cost", (total_distance_before / 1000) * 13)
 
-    # Helper savings
-    distance_saving = total_distance_before - total_distance_after
-    time_saving = total_time_before - total_time_after
-    fuel_saving = fuel_cost_before - fuel_cost_after
-    total_cost_saving = total_cost_before - total_cost_after
+    distance_saved = total_distance_before - total_distance_after
+    time_saved = total_time_before - total_time_after
+    fuel_saved = fuel_cost_before - fuel_cost_after
+    total_cost_saved = total_cost_before - total_cost_after
 
-    # Simple Q&A rules
-    if "before total cost" in question or "before cost" in question:
-        return jsonify({
-            "answer": f"💰 Before optimization, total cost was ₹{total_cost_before:.0f}, after optimization ₹{total_cost_after:.0f}. Savings: ₹{total_cost_saving:.0f}."
-        })
+    # --- Define flexible keyword mapping ---
+    keyword_map = [
+        {"keywords": ["distance", "km", "travelled", "moved"], "metric": "distance", 
+         "before": f"{total_distance_before/1000:.2f} km",
+         "after": f"{total_distance_after/1000:.2f} km",
+         "saved": f"{distance_saved/1000:.2f} km"},
+        {"keywords": ["time", "travel time", "duration", "hours", "hrs"], "metric": "time", 
+         "before": f"{total_time_before/3600:.2f} hrs",
+         "after": f"{total_time_after/3600:.2f} hrs",
+         "saved": f"{time_saved/3600:.2f} hrs"},
+        {"keywords": ["fuel", "fuel cost", "gas", "petrol"], "metric": "fuel", 
+         "before": f"₹{fuel_cost_before:.0f}",
+         "after": f"₹{fuel_cost_after:.0f}",
+         "saved": f"₹{fuel_saved:.0f}"},
+        {"keywords": ["cost", "total cost", "money", "expenses"], "metric": "cost", 
+         "before": f"₹{total_cost_before:.0f}",
+         "after": f"₹{total_cost_after:.0f}",
+         "saved": f"₹{total_cost_saved:.0f}"}
+    ]
 
-    if "before fuel" in question:
-        return jsonify({
-            "answer": f"⛽ Before optimization, fuel cost was ₹{fuel_cost_before:.0f}, after optimization ₹{fuel_cost_after:.0f}. Savings: ₹{fuel_saving:.0f}."
-        })
+    response = None
 
-    if "before distance" in question:
-        return jsonify({
-            "answer": f"📏 Before optimization, total distance was {total_distance_before/1000:.2f} km, after optimization {total_distance_after/1000:.2f} km. Saved {distance_saving/1000:.2f} km."
-        })
+    # --- Check which metric user is asking about ---
+    for km in keyword_map:
+        if any(k in question for k in km["keywords"]):
+            if "before" in question:
+                response = f"{km['metric'].title()} before optimization: {km['before']}"
+            elif "after" in question or "total" in question or "taken" in question:
+                response = f"{km['metric'].title()} after optimization: {km['after']}"
+            elif "saved" in question or "difference" in question:
+                response = f"{km['metric'].title()} saved: {km['saved']}"
+            else:
+                response = f"{km['metric'].title()} after optimization: {km['after']}"
+            break
 
-    if "before time" in question:
-        return jsonify({
-            "answer": f"⏱️ Before optimization, travel time was {total_time_before/3600:.2f} hrs, after optimization {total_time_after/3600:.2f} hrs. Saved {time_saving/3600:.2f} hrs."
-        })
+    # --- Fallback to SerpAPI if unrelated ---
+    if response is None:
+        response = get_answer_from_serpapi(question)
 
-    # Savings questions
-    if "money" in question or "cost" in question or "saved" in question:
-        return jsonify({"answer": f"💰 You saved about ₹{total_cost_saving:.0f} overall across the fleet."})
-
-    if "fuel" in question:
-        return jsonify({"answer": f"⛽ Fuel cost reduced by ₹{fuel_saving:.0f}."})
-
-    if "time" in question:
-        return jsonify({"answer": f"⏱️ You saved about {time_saving/3600:.2f} hours overall."})
-
-    if "distance" in question:
-        return jsonify({"answer": f"📏 Total distance reduced by {distance_saving/1000:.2f} km (from {total_distance_before/1000:.2f} km → {total_distance_after/1000:.2f} km)."})
-    
-    return jsonify({"answer": "🤖 Sorry, I don't know that yet. Try asking about before/after cost, fuel, time, or distance."})
+    return jsonify({"answer": response})
 
 
 @app.route("/api/calculate_before_metrics", methods=["POST"])

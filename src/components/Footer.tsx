@@ -112,10 +112,8 @@ const Footer = () => {
           <div className="border-t border-[#e0f7f7]/20 dark:border-[#79e6f0]/20 pt-8">
             <div className="flex flex-col md:flex-row justify-between items-center">
               <div className="text-[#e0f7f7]/60 dark:text-[#79e6f0]/50 text-sm mb-4 md:mb-0">
-                © 2024 RouteAI. All rights reserved.
               </div>
               <div className="text-[#e0f7f7]/60 dark:text-[#79e6f0]/50 text-sm">
-                Built with ❤️ for smarter logistics
               </div>
             </div>
           </div>
