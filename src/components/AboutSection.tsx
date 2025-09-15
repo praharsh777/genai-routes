@@ -10,9 +10,9 @@ interface Contributor {
 const contributors: Contributor[] = [
   { name: "M PRAHARSH", role: "Full Stack Dev", image: "/praharsh.jpg", roll: "22J41A6730" },
   { name: "M SREEJA", role: "ML Engineer", image: "/sreeja.jpg", roll: "22J41A6732" },
-  { name: "K RAHUL", role: "UI/UX Designer", image: "/rahul.jpg", roll: "22J41A6728" },
+  { name: "K RAHUL", role: "Backend Dev", image: "/rahul.jpg", roll: "22J41A6728" },
   { name: "M VARSHINI", role: "Frontend Dev", image: "varshini.jpg", roll: "22J41A6738" },
-  { name: "M KABILAN", role: "Backend Dev", image: "/kabilan.jpg", roll: "22J41A6729" },
+  { name: "M KABILAN", role: "UI/UX Designer", image: "/kabilan.jpg", roll: "22J41A6729" },
   { name: "M NIVAS", role: "Data Scientist", image: "/nivas.jpg", roll: "22J41A6739" },
   { name: "N HEMANTH", role: "DevOps Engineer", image: "/hemanth.jpg", roll: "22J41A6741" },
 ];

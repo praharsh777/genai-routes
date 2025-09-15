@@ -26,7 +26,7 @@ interface BaselineMetrics {
   distance: number;
   duration: number;
 }
-
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:5000";
 const UploadSection = () => {
   const [dragActive, setDragActive] = useState(false);
   const [file, setFile] = useState<File | null>(null);
@@ -109,7 +109,7 @@ const UploadSection = () => {
 
       // 1) Fetch baseline (naive) using same number of vehicles (so comparison is fair)
       try {
-        const baselineRes = await fetch("http://localhost:5000/api/calculate_before_metrics", {
+        const baselineRes = await fetch(`${API_BASE_URL}/api/calculate_before_metrics`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ depot, customers, numVehicles: vehicles }),
@@ -130,7 +130,7 @@ const UploadSection = () => {
       }
 
       // 2) Call optimization
-      const response = await fetch("http://localhost:5000/api/optimize_routes", {
+      const response = await fetch(`${API_BASE_URL}/api/optimize_routes`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

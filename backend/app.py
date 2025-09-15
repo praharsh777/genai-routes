@@ -16,7 +16,9 @@ ORS_BASE_URL = "https://api.openrouteservice.org/v2/directions/driving-car"
 FALLBACK_SPEED = float(os.getenv("FALLBACK_SPEED", 15.0))  # m/s for duration fallback
 
 app = Flask(__name__)
-CORS(app, supports_credentials=True)
+allowed_origin = os.getenv("CORS_ALLOWED_ORIGIN", "*")
+CORS(app, resources={r"/api/*": {"origins": allowed_origin}}, supports_credentials=True)
+
 
 # --- External helper functions ---
 

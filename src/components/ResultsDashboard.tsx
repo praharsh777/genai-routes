@@ -11,6 +11,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:5000";
 
 interface Vehicle {
   id: number;
@@ -129,7 +130,7 @@ const ResultsDashboard = ({ vehicles = [], baseline }: ResultsDashboardProps) =>
       if (vehicles.length === 0) return;
       setLoadingInsights(true);
       try {
-        const res = await fetch("http://127.0.0.1:5000/api/explain_routes", {
+        const res = await fetch(`${API_BASE_URL}/api/explain_routes`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ vehicles }),
@@ -152,7 +153,7 @@ const ResultsDashboard = ({ vehicles = [], baseline }: ResultsDashboardProps) =>
     setChatLoading(true);
 
     try {
-      const res = await fetch("http://127.0.0.1:5000/api/ask", {
+      const res = await fetch(`${API_BASE_URL}/api/ask`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ vehicles, baseline, question: chatInput }),
